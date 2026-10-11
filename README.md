@@ -1,4 +1,6 @@
-# Ansible Automotive Test Farm POC
+# Automotive Test Infrastructure Automation
+
+### Ansible-Driven Linux Test Farm with CI/CD
 
 This repository is a learning proof of concept for an Ansible-managed automotive test farm. It demonstrates Linux host provisioning, artifact deployment, simulated ECU flashing, infrastructure validation, and CI automation using two Ubuntu Docker containers.
 
