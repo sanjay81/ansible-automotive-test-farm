@@ -1,0 +1,71 @@
+---
+- name: Rolling maintenance of automotive test farm
+  hosts: test_farm
+  gather_facts: false
+  serial: 1
+  any_errors_fatal: true
+
+  vars:
+    apply_updates: false
+    simulate_failure_host: ""
+    firmware_path: /opt/test-farm/artifacts/firmware.img
+    expected_firmware_sha256: "8ab3454da2c5b6086dafad9b27792a5f48aeda6a2075336a3e69a791653d29d7"
+
+  tasks:
+    - name: Pre-check ADB
+      ansible.builtin.command:
+        cmd: adb version
+      changed_when: false
+
+    - name: Pre-check firmware
+      ansible.builtin.stat:
+        path: "{{ firmware_path }}"
+        checksum_algorithm: sha256
+      register: firmware_before
+
+    - name: Validate firmware before maintenance
+      ansible.builtin.assert:
+        that:
+          - firmware_before.stat.exists
+          - firmware_before.stat.checksum == expected_firmware_sha256
+
+    - name: Update APT package index
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: apply_updates | bool
+
+    - name: Update selected package
+      ansible.builtin.apt:
+        name: curl
+        state: latest
+        only_upgrade: true
+      when: apply_updates | bool
+
+    - name: Simulate a maintenance validation failure
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname != simulate_failure_host
+        fail_msg: "Simulated maintenance failure - stopping rollout"
+
+    - name: Post-check ADB
+      ansible.builtin.command:
+        cmd: adb version
+      changed_when: false
+
+    - name: Post-check firmware
+      ansible.builtin.stat:
+        path: "{{ firmware_path }}"
+        checksum_algorithm: sha256
+      register: firmware_after
+
+    - name: Verify host health after maintenance
+      ansible.builtin.assert:
+        that:
+          - firmware_after.stat.exists
+          - firmware_after.stat.checksum == expected_firmware_sha256
+        success_msg: "{{ inventory_hostname }} passed post-maintenance checks"
+
+    - name: Confirm host completed maintenance
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }} healthy - proceeding to next host"

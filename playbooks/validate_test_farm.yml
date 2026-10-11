@@ -1,0 +1,54 @@
+---
+- name: Validate simulated automotive test farm infrastructure
+  hosts: test_farm
+  gather_facts: false
+
+  vars:
+    workspace: /opt/test-farm
+    device_id: "ECU-{{ inventory_hostname }}"
+    # Controller-side source artifact is the trust reference, not the remote image.
+    expected_sha256: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../artifacts/firmware.img', rstrip=False) | hash('sha256') }}"
+  tasks:
+    - name: Deploy infrastructure validation script
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/validate_test_farm.py"
+        dest: "{{ workspace }}/validate_test_farm.py"
+        mode: "0755"
+
+    - name: Run infrastructure validation tests
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ workspace }}/validate_test_farm.py"
+          - --workspace
+          - "{{ workspace }}"
+          - --report
+          - "{{ workspace }}/{{ device_id }}-flash.json"
+          - --image
+          - "{{ workspace }}/artifacts/firmware.img"
+          - --device
+          - "{{ device_id }}"
+          - --expected-sha256
+          - "{{ expected_sha256 }}"
+          - --xml
+          - "{{ workspace }}/{{ device_id }}-infrastructure.xml"
+      register: validation_result
+      changed_when: false
+      failed_when: false
+
+    - name: Show validation summary
+      ansible.builtin.debug:
+        var: validation_result.stdout_lines
+
+    - name: Retrieve JUnit report even on validation failure
+      ansible.builtin.fetch:
+        src: "{{ workspace }}/{{ device_id }}-infrastructure.xml"
+        dest: "{{ playbook_dir }}/../results/"
+        flat: false
+
+    - name: Fail host if infrastructure validation failed
+      ansible.builtin.assert:
+        that:
+          - validation_result.rc == 0
+        fail_msg: "Infrastructure validation failed for {{ device_id }}. See report in results/."
+        success_msg: "Infrastructure validation passed for {{ device_id }}."

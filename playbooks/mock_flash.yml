@@ -1,0 +1,49 @@
+---
+- name: Simulate firmware flashing on test farm
+  hosts: test_farm
+  gather_facts: false
+
+  vars:
+    firmware_path: /opt/test-farm/artifacts/firmware.img
+    flash_script: /opt/test-farm/mock_flash.py
+    device_id: "ECU-{{ inventory_hostname }}"
+
+  tasks:
+    - name: Deploy mock flashing script
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../scripts/mock_flash.py"
+        dest: "{{ flash_script }}"
+        mode: "0755"
+
+    - name: Get firmware checksum
+      ansible.builtin.stat:
+        path: "{{ firmware_path }}"
+        checksum_algorithm: sha256
+        get_checksum: true
+      register: firmware
+
+    - name: Check firmware exists
+      ansible.builtin.assert:
+        that:
+          - firmware.stat.exists
+          - firmware.stat.isreg
+
+    - name: Simulate flashing
+      ansible.builtin.command:
+        argv:
+          - python3
+          - "{{ flash_script }}"
+          - --image
+          - "{{ firmware_path }}"
+          - --device
+          - "{{ device_id }}"
+          - --output
+          - "/opt/test-farm/{{ device_id }}-flash.json"
+          - --sha256
+          - "{{ firmware.stat.checksum }}"
+      register: flash_result
+      changed_when: false
+
+    - name: Display flash result
+      ansible.builtin.debug:
+        var: flash_result.stdout

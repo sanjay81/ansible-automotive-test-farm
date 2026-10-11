@@ -1,0 +1,7 @@
+---
+- name: Configure automotive test hosts
+  hosts: test_farm
+  gather_facts: false
+
+  roles:
+    - common

@@ -1,0 +1,151 @@
+name: Automotive Test Farm CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Static quality checks
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible tools
+        run: |
+          python -m pip install -r requirements-ci.txt
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Validate Ansible syntax
+        run: |
+          for playbook in playbooks/*.yml; do
+            echo "Checking $playbook"
+            ansible-playbook -i inventory/lab.ini \
+              "$playbook" --syntax-check
+          done
+
+      - name: Run Ansible lint
+        run: |
+          ansible-lint --profile min playbooks/
+
+      - name: Check Python syntax
+        run: |
+          python -m compileall -q scripts tests
+
+      - name: Run Python unit tests
+        run: |
+          python -m unittest discover -s tests -v
+
+  integration:
+    name: Docker + Ansible integration
+    needs: quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: |
+          python -m pip install -r requirements-ci.txt
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Verify runner Docker daemon
+        run: docker info
+
+      - name: Generate dummy firmware
+        run: |
+          mkdir -p artifacts
+          printf 'MOCK_ANDROID_FIRMWARE_VERSION_1.0\n' \
+            > artifacts/firmware.img
+          sha256sum artifacts/firmware.img
+
+      - name: Start Linux test farm
+        run: |
+          docker compose -f docker/compose.yaml build
+          docker compose -f docker/compose.yaml up -d
+          docker ps
+
+      - name: Check host connectivity
+        run: |
+          ansible -i inventory/lab.ini \
+            test_farm -m ansible.builtin.ping
+
+      - name: Configure Linux hosts
+        run: |
+          ansible-playbook -i inventory/lab.ini \
+            playbooks/provision.yml
+
+      - name: Verify configuration idempotency
+        run: |
+          ansible-playbook -i inventory/lab.ini \
+            playbooks/provision.yml \
+            | tee idempotency.log
+
+          python - <<'PY'
+          import pathlib
+          import re
+
+          output = pathlib.Path("idempotency.log").read_text()
+
+          for host in ("linux01", "linux02"):
+              pattern = rf"^{host}\s+:.*changed=(\d+)"
+              match = re.search(pattern, output, re.MULTILINE)
+              if not match or int(match.group(1)) != 0:
+                  raise SystemExit(
+                      f"Idempotency failed for {host}"
+                  )
+
+          print("Configuration idempotency passed")
+          PY
+
+      - name: Deploy firmware artifact
+        run: |
+          ansible-playbook -i inventory/lab.ini \
+            playbooks/deploy_artifact.yml
+
+      - name: Run simulated ECU flashing
+        run: |
+          ansible-playbook -i inventory/lab.ini \
+            playbooks/mock_flash.yml
+
+      - name: Validate infrastructure
+        run: |
+          ansible-playbook -i inventory/lab.ini \
+            playbooks/validate_test_farm.yml
+
+      - name: Publish JUnit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: infrastructure-test-reports
+          path: results/
+          if-no-files-found: warn
+
+      - name: Show container logs on failure
+        if: failure()
+        run: |
+          docker ps -a
+          docker compose -f docker/compose.yaml logs --tail=100
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker compose -f docker/compose.yaml down

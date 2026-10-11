@@ -1,0 +1,32 @@
+---
+- name: Install common tools
+  ansible.builtin.apt:
+    name:
+      - curl
+      - git
+      - unzip
+      - adb
+    state: present
+    update_cache: true
+
+- name: Create test workspace
+  ansible.builtin.file:
+    path: /opt/test-farm
+    state: directory
+    mode: "0755"
+
+- name: Create artifact directory
+  ansible.builtin.file:
+    path: /opt/test-farm/artifacts
+    state: directory
+    mode: "0755"
+
+- name: Check ADB installation
+  ansible.builtin.command:
+    cmd: adb version
+  register: adb_result
+  changed_when: false
+
+- name: Report ADB version
+  ansible.builtin.debug:
+    var: adb_result.stdout_lines

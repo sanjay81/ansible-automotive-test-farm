@@ -1,0 +1,39 @@
+---
+- name: Deploy simulated Android firmware
+  hosts: test_farm
+  gather_facts: false
+
+  tasks:
+    - name: Create artifact directory
+      ansible.builtin.file:
+        path: /opt/test-farm/artifacts
+        state: directory
+        mode: "0755"
+
+    - name: Copy firmware artifact to Linux hosts
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../artifacts/firmware.img"
+        dest: /opt/test-farm/artifacts/firmware.img
+        mode: "0644"
+
+    - name: Calculate remote firmware checksum
+      ansible.builtin.stat:
+        path: /opt/test-farm/artifacts/firmware.img
+        checksum_algorithm: sha256
+        get_checksum: true
+      register: remote_firmware
+
+    - name: Calculate source firmware checksum
+      ansible.builtin.stat:
+        path: "{{ playbook_dir }}/../artifacts/firmware.img"
+        checksum_algorithm: sha256
+        get_checksum: true
+      delegate_to: localhost
+      register: source_firmware
+
+    - name: Verify artifact integrity
+      ansible.builtin.assert:
+        that:
+          - remote_firmware.stat.checksum == source_firmware.stat.checksum
+        success_msg: "Firmware SHA-256 verified"
+        fail_msg: "Firmware checksum mismatch"

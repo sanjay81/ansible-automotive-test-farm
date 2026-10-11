@@ -1,0 +1,15 @@
+services:
+  linux01:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: automotive-test-host:local
+    container_name: testfarm-linux01
+    command: sleep infinity
+
+  linux02:
+    image: automotive-test-host:local
+    container_name: testfarm-linux02
+    command: sleep infinity
+    depends_on:
+      - linux01
