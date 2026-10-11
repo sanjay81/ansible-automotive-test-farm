@@ -9,7 +9,7 @@
     apply_updates: false
     simulate_failure_host: ""
     firmware_path: /opt/test-farm/artifacts/firmware.img
-    expected_firmware_sha256: "8ab3454da2c5b6086dafad9b27792a5f48aeda6a2075336a3e69a791653d29d7"
+    expected_firmware_sha256: "{{ lookup('ansible.builtin.file', playbook_dir ~ '/../artifacts/firmware.img', rstrip=False) | hash('sha256') }}"
 
   tasks:
     - name: Pre-check ADB

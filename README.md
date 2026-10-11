@@ -16,7 +16,7 @@ See [docs/architecture.md](docs/architecture.md) for the architecture diagram an
 - `playbooks/mock_flash.yml` invokes `scripts/mock_flash.py`, which checks a checksum and writes a simulated flash report.
 - `playbooks/validate_test_farm.yml` runs `scripts/validate_test_farm.py` on each host and fetches JUnit reports into `results/`.
 - `playbooks/rolling_patch.yml` models serial maintenance with health checks. Package updates are disabled by default; rollback is not implemented.
-- `.github/workflows/ansible-ci.yml` defines static quality and Docker integration jobs on GitHub-hosted Ubuntu runners.
+- `.github/workflows/ansible-ci.yml` defines static quality and Docker integration jobs on GitHub-hosted Ubuntu runners. Integration includes a negative checksum scenario on Linux01, preserves its JUnit failure report, and redeploys clean firmware afterward.
 
 ## Requirements
 

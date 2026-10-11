@@ -95,6 +95,7 @@ jobs:
 
       - name: Verify configuration idempotency
         run: |
+          set -o pipefail
           ansible-playbook -i inventory/lab.ini \
             playbooks/provision.yml \
             | tee idempotency.log
@@ -130,6 +131,61 @@ jobs:
         run: |
           ansible-playbook -i inventory/lab.ini \
             playbooks/validate_test_farm.yml
+
+      - name: Corrupt firmware copy on Linux01
+        run: |
+          docker exec testfarm-linux01 sh -c \
+            "printf 'CORRUPTED_TEST_FIRMWARE\\n' > /opt/test-farm/artifacts/firmware.img"
+
+      - name: Verify checksum failure and preserve JUnit reports
+        run: |
+          set -o pipefail
+          set +e
+          ansible-playbook -i inventory/lab.ini \
+            playbooks/validate_test_farm.yml \
+            | tee negative-validation.log
+          validation_rc=$?
+          set -e
+
+          if [ "$validation_rc" -eq 0 ]; then
+            echo "Expected the negative validation run to fail"
+            exit 1
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+          from shutil import copy2
+          from xml.etree import ElementTree as ET
+
+          results = Path("results")
+          preserved = results / "negative"
+
+          for host in ("linux01", "linux02"):
+              report = results / host / "opt/test-farm" / f"ECU-{host}-infrastructure.xml"
+              if not report.is_file():
+                  raise SystemExit(f"JUnit report missing for {host}: {report}")
+
+              suite = ET.parse(report).getroot()
+              cases = {case.get("name"): case for case in suite.findall("testcase")}
+              if host == "linux01":
+                  checksum_case = cases.get("test_firmware_checksum")
+                  if checksum_case is None or checksum_case.find("failure") is None:
+                      raise SystemExit("Linux01 JUnit report did not record the checksum failure")
+                  if int(suite.get("failures", "0")) < 1:
+                      raise SystemExit("Linux01 JUnit suite has no recorded failures")
+              elif int(suite.get("failures", "0")) != 0 or int(suite.get("errors", "0")) != 0:
+                  raise SystemExit("Linux02 should pass the negative validation scenario")
+
+              preserved.mkdir(parents=True, exist_ok=True)
+              copy2(report, preserved / f"{host}-infrastructure.xml")
+
+          print("Negative checksum scenario produced the expected JUnit reports")
+          PY
+
+      - name: Restore clean firmware on both hosts
+        run: |
+          ansible-playbook -i inventory/lab.ini \
+            playbooks/deploy_artifact.yml
 
       - name: Publish JUnit reports
         if: always()

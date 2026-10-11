@@ -37,7 +37,7 @@ flowchart TB
 5. `mock_flash.yml` invokes `mock_flash.py`. The script reads the image, verifies the supplied SHA-256, and writes a JSON result; it does not access hardware.
 6. `validate_test_farm.yml` invokes `validate_test_farm.py` on each host. The validator checks workspace, ADB availability, firmware integrity, flash report contents, and free disk space, then writes JUnit XML for collection by CI.
 
-The GitHub Actions quality job runs Ansible syntax checks, lint, Python compilation, and unit tests. The integration job builds and starts its own containers on the GitHub-hosted Ubuntu runner, then provisions, checks idempotency, deploys, simulates flashing, validates each host, and uploads JUnit reports.
+The GitHub Actions quality job runs Ansible syntax checks, lint, Python compilation, and unit tests. The integration job builds and starts its own containers on the GitHub-hosted Ubuntu runner, then provisions, checks idempotency, deploys, simulates flashing, and validates each host. It then corrupts Linux01's temporary firmware copy, verifies the checksum failure and preserved JUnit reports, redeploys the trusted artifact to both hosts, and uploads the reports.
 
 ## Scope and limits
 
