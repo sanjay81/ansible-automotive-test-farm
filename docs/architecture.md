@@ -7,15 +7,14 @@ flowchart TB
     subgraph Controller[Developer machine or GitHub-hosted Ubuntu runner]
         Source[Mock firmware source\nartifacts/firmware.img]
         Inventory[Ansible inventory\ninventory/lab.ini]
-        Playbooks[Ansible playbooks]
-        Validator[validate_test_farm.py]
-        Flash[ mock_flash.py\nchecksum check + JSON report]
+        Playbooks[Ansible playbooks + scripts]
+        Results[JUnit reports\nresults/]
         CI[GitHub Actions\nquality + integration]
     end
 
     subgraph Farm[Docker Compose test farm]
-        Host1[Ubuntu 24.04\ntestfarm-linux01]
-        Host2[Ubuntu 24.04\ntestfarm-linux02]
+        Host1[Ubuntu 24.04\ntestfarm-linux01\nprovisioned tools + mock firmware\nmock flash + validation run here]
+        Host2[Ubuntu 24.04\ntestfarm-linux02\nprovisioned tools + mock firmware\nmock flash + validation run here]
     end
 
     Source -->|deploy and compare SHA-256| Host1
@@ -23,13 +22,9 @@ flowchart TB
     Inventory --> Playbooks
     Playbooks -->|community.docker CLI connection| Host1
     Playbooks -->|community.docker CLI connection| Host2
-    Playbooks -->|provision tools| Host1
-    Playbooks -->|provision tools| Host2
-    Playbooks -->|run simulated flash| Flash
-    Flash -->|write simulated result| Host1
-    Flash -->|write simulated result| Host2
-    Playbooks -->|execute infrastructure checks| Validator
-    Validator -->|JUnit XML fetched to results/| CI
+    Host1 -->|fetch JUnit XML| Results
+    Host2 -->|fetch JUnit XML| Results
+    Results -->|upload artifact| CI
     CI -->|build and start containers on runner| Farm
 ```
 
